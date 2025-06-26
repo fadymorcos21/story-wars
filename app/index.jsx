@@ -113,7 +113,7 @@ export default function Home() {
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "position" : "height"}
             keyboardVerticalOffset={Platform.select({ ios: 50, android: 0 })}
-            className=" left-0 px-10 bottom-28 right-0 px-4 pb-6"
+            className=" left-0 px-10 bottom-28 right-0 px-10 pb-6"
             enabled={isKeyboardVisible === "code"}
           >
             <View className="w-full max-w-md h-12 mb-6 relative">
