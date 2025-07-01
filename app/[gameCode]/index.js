@@ -29,10 +29,10 @@ export default function GameLobby() {
   const me = players.find((p) => p.username === user) || {};
   const amHost = me.isHost;
   const iAmReady = me.ready;
-  const allReady = players.length > 0 && players.every((p) => p.ready);
+  const allReady = players.length >= 3 && players.every((p) => p.ready);
 
   // story input state
-  const [stories, setStories] = useState(Array(MIN_STORIES).fill(""));
+  const [stories, setStories] = useState(Array(MIN_STORIES).fill("a"));
   const [editingIndex, setEditingIndex] = useState(null);
   const [draftText, setDraftText] = useState("");
 

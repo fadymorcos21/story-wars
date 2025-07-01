@@ -10,7 +10,6 @@ require("dotenv").config();
 const redis = new Redis({
   host: process.env.REDIS_HOST,
   port: 6379,
-  // password: "your-redis-password-if-set"
 });
 
 // Helpers
@@ -24,14 +23,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Create a new game, store in Redis
 app.post("/create", async (req, res) => {
   let pin;
   do {
     pin = makePin();
   } while (await redis.exists(`game:${pin}:host`));
 
-  // initialize game keys
   await redis
     .multi()
     .set(`game:${pin}:host`, "")
@@ -56,18 +53,16 @@ io.on("connection", (socket) => {
   console.log("↔️ socket connected:", socket.id);
 
   socket.on("joinGame", async ({ pin, username }) => {
-    // check game exists
     const exists = await redis.exists(`game:${pin}:host`);
     if (!exists) return socket.emit("errorMessage", "Game not found");
 
-    // assign host if needed
     let hostId = await redis.get(`game:${pin}:host`);
     if (!hostId) {
       await redis.set(`game:${pin}:host`, socket.id);
       hostId = socket.id;
     }
 
-    // add player to list, initialize ready=false
+    // include ready:false
     const playerObj = { username, isHost: socket.id === hostId, ready: false };
     await redis.hset(
       `game:${pin}:players`,
@@ -78,7 +73,7 @@ io.on("connection", (socket) => {
 
     socket.join(pin);
 
-    // broadcast updated players (with ready=false)
+    // broadcast playersUpdate
     const playersRaw = await redis.hgetall(`game:${pin}:players`);
     const playerList = Object.entries(playersRaw).map(([id, str]) => {
       const p = JSON.parse(str);
@@ -88,30 +83,29 @@ io.on("connection", (socket) => {
   });
 
   socket.on("submitStories", async ({ pin, stories }) => {
-    // store stories
     await redis.hset(`game:${pin}:stories`, socket.id, JSON.stringify(stories));
     await redis.sadd(`game:${pin}:submissions`, socket.id);
 
-    // mark this player ready=true
-    const playersRaw = await redis.hgetall(`game:${pin}:players`);
-    const meRaw = playersRaw[socket.id];
+    // mark ready=true
+    const playersRaw1 = await redis.hgetall(`game:${pin}:players`);
+    const meRaw = playersRaw1[socket.id];
     if (meRaw) {
       const me = JSON.parse(meRaw);
       me.ready = true;
       await redis.hset(`game:${pin}:players`, socket.id, JSON.stringify(me));
     }
 
-    // re-broadcast playersUpdate with updated ready flags
-    const updatedPlayersRaw = await redis.hgetall(`game:${pin}:players`);
-    const updatedList = Object.entries(updatedPlayersRaw).map(([id, str]) => {
+    // re-broadcast playersUpdate
+    const playersRaw2 = await redis.hgetall(`game:${pin}:players`);
+    const updatedList = Object.entries(playersRaw2).map(([id, str]) => {
       const p = JSON.parse(str);
       return { id, username: p.username, isHost: p.isHost, ready: p.ready };
     });
     io.to(pin).emit("playersUpdate", updatedList);
 
-    // original storiesSubmitted event (if you need it)
+    // optional storiesSubmitted
     const subCount = await redis.scard(`game:${pin}:submissions`);
-    const totalPlayers = Object.keys(updatedPlayersRaw).length;
+    const totalPlayers = Object.keys(playersRaw2).length;
     if (subCount === totalPlayers) {
       io.to(pin).emit("storiesSubmitted");
     }
@@ -121,10 +115,18 @@ io.on("connection", (socket) => {
     const host = await redis.get(`game:${pin}:host`);
     if (socket.id !== host) return;
 
-    // set current round
+    // —— NEW: enforce 3‐player minimum ——
+    const playersRaw = await redis.hgetall(`game:${pin}:players`);
+    const playerCount = Object.keys(playersRaw).length;
+    if (playerCount < 3) {
+      return socket.emit(
+        "errorMessage",
+        `Need at least 3 players to start (currently ${playerCount}).`
+      );
+    }
+
     await redis.set(`game:${pin}:currentRound`, 1);
 
-    // pick random story example:
     const storiesRaw = await redis.hgetall(`game:${pin}:stories`);
     const authors = Object.keys(storiesRaw);
     const randomAuthor = authors[Math.floor(Math.random() * authors.length)];
@@ -139,7 +141,6 @@ io.on("connection", (socket) => {
 
   socket.on("vote", async ({ pin, choiceId }) => {
     await redis.hset(`game:${pin}:votes`, socket.id, choiceId);
-
     const votes = await redis.hgetall(`game:${pin}:votes`);
     const authorId = await redis.get(`game:${pin}:currentAuthor`);
     const playerIds = Object.keys(
@@ -166,13 +167,11 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", async () => {
-    // find this player’s game
     const keys = await redis.keys("game:*:players");
     for (const key of keys) {
       const pin = key.split(":")[1];
       if (!(await redis.hexists(key, socket.id))) continue;
 
-      // remove them
       await Promise.all([
         redis.hdel(`game:${pin}:players`, socket.id),
         redis.hdel(`game:${pin}:stories`, socket.id),
@@ -180,7 +179,6 @@ io.on("connection", (socket) => {
         redis.srem(`game:${pin}:submissions`, socket.id),
       ]);
 
-      // if they were host, pick new one
       const oldHost = await redis.get(`game:${pin}:host`);
       let newHost = oldHost;
       if (socket.id === oldHost) {
@@ -189,21 +187,18 @@ io.on("connection", (socket) => {
         await redis.set(`game:${pin}:host`, newHost);
       }
 
-      // update everyone’s isHost flag
-      const playersRaw2 = await redis.hgetall(`game:${pin}:players`);
-      for (let [id, str] of Object.entries(playersRaw2)) {
+      const playersRaw3 = await redis.hgetall(`game:${pin}:players`);
+      for (let [id, str] of Object.entries(playersRaw3)) {
         const p = JSON.parse(str);
         p.isHost = id === newHost;
         await redis.hset(`game:${pin}:players`, id, JSON.stringify(p));
       }
 
-      // broadcast updated list
       const finalRaw = await redis.hgetall(`game:${pin}:players`);
       const finalList = Object.entries(finalRaw).map(([id, str]) =>
         JSON.parse(str)
       );
       io.to(pin).emit("playersUpdate", finalList);
-
       break;
     }
   });
