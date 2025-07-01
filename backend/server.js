@@ -4,10 +4,11 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 const Redis = require("ioredis");
+require("dotenv").config();
 
 // Redis client (connecting to your Pi)
 const redis = new Redis({
-  host: process.env.REDIS_HOST || "192.168.2.138",
+  host: process.env.REDIS_HOST,
   port: 6379,
   // password: "your-redis-password-if-set"
 });
