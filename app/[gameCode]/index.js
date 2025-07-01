@@ -62,7 +62,6 @@ export default function GameLobby() {
   const startGame = () => {
     if (!socket) return Alert.alert("Error", "Not connected");
     socket.emit("startGame", gameCode);
-    router.replace(`/${gameCode}/play?user=${encodeURIComponent(user)}`);
   };
 
   const renderPlayer = ({ item }) => (

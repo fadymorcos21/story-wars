@@ -77,9 +77,10 @@ export function GameProvider({ children }) {
     );
 
     // when host starts, backend emits this
-    socket.on("gameStarted", ({ round, authorId, text }) =>
-      dispatch({ type: "GAME_STARTED", round, authorId, text })
-    );
+    socket.on("gameStarted", ({ round, authorId, text }) => {
+      dispatch({ type: "GAME_STARTED", round, authorId, text });
+      router.replace(`/${gameCode}/play?user=${encodeURIComponent(user)}`);
+    });
 
     // after everyone votes
     socket.on("voteResult", ({ votes, scores }) =>
