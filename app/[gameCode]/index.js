@@ -35,6 +35,11 @@ export default function GameLobby() {
     socket.on("playersUpdate", (list) => {
       setPlayers(list.map((p) => ({ name: p.username, isHost: p.isHost })));
     });
+    // 🚨 Add this to handle game not found
+    socket.on("errorMessage", (msg) => {
+      alert(msg); // or show custom UI
+      router.replace("/"); // redirect to home
+    });
     return () => {
       socket.off("playersUpdate");
       socket.disconnect();
