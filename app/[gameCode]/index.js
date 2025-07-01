@@ -30,11 +30,15 @@ export default function GameLobby() {
 
   useEffect(() => {
     const socket = connectSocket(BACKEND_URL);
+    socket.connect();
     socket.emit("joinGame", { pin: gameCode, username: user });
     socket.on("playersUpdate", (list) => {
       setPlayers(list.map((p) => ({ name: p.username, isHost: p.isHost })));
     });
-    return () => socket.off("playersUpdate");
+    return () => {
+      socket.off("playersUpdate");
+      socket.disconnect();
+    };
   }, [gameCode]);
 
   const openEditor = (idx) => {
@@ -80,18 +84,29 @@ export default function GameLobby() {
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
+
       <View style={styles.container}>
+        {/* Close button to leave lobby */}
+        <TouchableOpacity
+          style={styles.closeButton}
+          onPress={() => router.replace("/")}
+        >
+          <MaterialCommunityIcons name="close" size={24} color="#FFF" />
+        </TouchableOpacity>
+
         <View style={styles.header}>
           <Text style={styles.pinLabel}>Game PIN</Text>
           <Text style={styles.codeText}>{gameCode}</Text>
           <Text style={styles.waitingText}>Waiting for players to join…</Text>
         </View>
+
         <FlatList
           data={players}
           keyExtractor={(p) => p.name}
           renderItem={renderPlayer}
           style={{ marginBottom: 24 }}
         />
+
         <Text style={styles.sectionTitle}>
           Your Stories ({MIN_STORIES} required, max {MAX_STORIES}):
         </Text>
@@ -107,6 +122,7 @@ export default function GameLobby() {
             </Text>
           </TouchableOpacity>
         ))}
+
         {stories.length >= 4 && (
           <View style={styles.storyButtonsRow}>
             {stories.length < MAX_STORIES && (
@@ -139,6 +155,7 @@ export default function GameLobby() {
             </TouchableOpacity>
           </View>
         )}
+
         {stories.length < 4 && stories.length < MAX_STORIES && (
           <TouchableOpacity
             onPress={addStory}
@@ -154,6 +171,7 @@ export default function GameLobby() {
             <Text style={styles.addButtonText}>Add another story</Text>
           </TouchableOpacity>
         )}
+
         <TouchableOpacity
           onPress={() =>
             router.push(`/${gameCode}/wait?user=${encodeURIComponent(user)}`)
@@ -169,6 +187,7 @@ export default function GameLobby() {
           <Text style={styles.submitText}>SUBMIT STORIES</Text>
         </TouchableOpacity>
       </View>
+
       <Modal
         visible={editingIndex !== null}
         transparent
@@ -279,13 +298,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   modalCancel: { fontSize: 16, color: "#555" },
-  pinLabel: {
-    fontSize: 16,
-    color: "#888",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
   modalSaveButton: {
     backgroundColor: "#3B82F6",
     borderRadius: 6,
@@ -293,4 +305,17 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   modalSaveText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  pinLabel: {
+    fontSize: 16,
+    color: "#888",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  closeButton: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    zIndex: 10,
+  },
 });
