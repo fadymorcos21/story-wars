@@ -1,5 +1,5 @@
 // app/[gameCode]/index.js
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   SafeAreaView,
   View,
@@ -8,76 +8,74 @@ import {
   TouchableOpacity,
   Modal,
   TextInput,
-  Dimensions,
   StyleSheet,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { connectSocket } from "../../services/socket";
+import { useGame } from "../../context/gameContext";
 
 const MAX_STORIES = 5;
 const MIN_STORIES = 3;
-const BACKEND_URL = "http://192.168.2.98:5000";
 
 export default function GameLobby() {
   const { gameCode, user } = useLocalSearchParams();
   const router = useRouter();
-  const [players, setPlayers] = useState([]);
-  const [stories, setStories] = useState(["", "", ""]);
+  const { state, socket } = useGame();
+  const { players } = state;
+
+  // figure out current user & host / ready states
+  const me = players.find((p) => p.username === user) || {};
+  const amHost = me.isHost;
+  const iAmReady = me.ready;
+  const allReady = players.length > 0 && players.every((p) => p.ready);
+
+  // story input state
+  const [stories, setStories] = useState(Array(MIN_STORIES).fill(""));
   const [editingIndex, setEditingIndex] = useState(null);
   const [draftText, setDraftText] = useState("");
-
-  useEffect(() => {
-    const socket = connectSocket(BACKEND_URL);
-    socket.connect();
-    socket.emit("joinGame", { pin: gameCode, username: user });
-    socket.on("playersUpdate", (list) => {
-      setPlayers(list.map((p) => ({ name: p.username, isHost: p.isHost })));
-    });
-    // 🚨 Add this to handle game not found
-    socket.on("errorMessage", (msg) => {
-      alert(msg); // or show custom UI
-      router.replace("/"); // redirect to home
-    });
-    return () => {
-      socket.off("playersUpdate");
-      socket.disconnect();
-    };
-  }, [gameCode]);
 
   const openEditor = (idx) => {
     setDraftText(stories[idx]);
     setEditingIndex(idx);
   };
   const saveEditor = () => {
-    if (editingIndex === null) return;
     const next = [...stories];
     next[editingIndex] = draftText;
     setStories(next);
     setEditingIndex(null);
   };
   const addStory = () => {
-    if (stories.length < MAX_STORIES) {
-      setStories([...stories, ""]);
-    }
+    if (stories.length < MAX_STORIES) setStories([...stories, ""]);
   };
   const removeStory = () => {
-    if (stories.length > MIN_STORIES) {
-      const newStories = [...stories];
-      newStories.pop();
-      setStories(newStories);
-    }
+    if (stories.length > MIN_STORIES)
+      setStories((prev) => prev.slice(0, prev.length - 1));
   };
+
+  const submitStories = () => {
+    if (!socket) return Alert.alert("Error", "Not connected");
+    socket.emit("submitStories", { pin: gameCode, stories });
+  };
+
+  const startGame = () => {
+    if (!socket) return Alert.alert("Error", "Not connected");
+    socket.emit("startGame", gameCode);
+    router.replace(`/${gameCode}/play?user=${encodeURIComponent(user)}`);
+  };
+
   const renderPlayer = ({ item }) => (
     <View style={styles.playerRow}>
       <MaterialCommunityIcons
-        name={item.isHost ? "crown" : "emoticon-outline"}
-        size={32}
-        color="#F0EAD6"
+        name={item.isHost ? "crown" : "account"}
+        size={28}
+        color={item.ready ? "limegreen" : "#F0EAD6"}
         style={{ marginRight: 8 }}
       />
-      <Text style={styles.playerName}>{item.name}</Text>
+      <Text style={[styles.playerName, item.ready && { color: "limegreen" }]}>
+        {item.username}
+      </Text>
     </View>
   );
 
@@ -85,13 +83,11 @@ export default function GameLobby() {
     <SafeAreaView style={{ flex: 1 }}>
       <LinearGradient
         colors={["#1a0041", "#4c005c"]}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
 
       <View style={styles.container}>
-        {/* Close button to leave lobby */}
+        {/* Close button */}
         <TouchableOpacity
           style={styles.closeButton}
           onPress={() => router.replace("/")}
@@ -99,115 +95,108 @@ export default function GameLobby() {
           <MaterialCommunityIcons name="close" size={24} color="#FFF" />
         </TouchableOpacity>
 
+        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.pinLabel}>Game PIN</Text>
           <Text style={styles.codeText}>{gameCode}</Text>
-          <Text style={styles.waitingText}>Waiting for players to join…</Text>
+          <Text style={styles.waitingText}>Waiting for players…</Text>
         </View>
 
+        {/* Player list with ready state */}
         <FlatList
           data={players}
-          keyExtractor={(p) => p.name}
+          keyExtractor={(p) => p.id}
           renderItem={renderPlayer}
           style={{ marginBottom: 24 }}
         />
 
-        <Text style={styles.sectionTitle}>
-          Your Stories ({MIN_STORIES} required, max {MAX_STORIES}):
-        </Text>
-        {stories.map((story, idx) => (
-          <TouchableOpacity
-            key={idx}
-            onPress={() => openEditor(idx)}
-            style={styles.storySlot}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.storyText}>
-              {story || `${idx + 1}. Tap to enter story`}
+        {/* If I haven't submitted, show story inputs; otherwise show waiting / start */}
+        {!iAmReady ? (
+          <>
+            <Text style={styles.sectionTitle}>
+              Your Stories ({MIN_STORIES} required):
             </Text>
-          </TouchableOpacity>
-        ))}
-
-        {stories.length >= 4 && (
-          <View style={styles.storyButtonsRow}>
-            {stories.length < MAX_STORIES && (
+            {stories.map((story, idx) => (
               <TouchableOpacity
-                onPress={addStory}
-                style={[styles.addButton, { flex: 1, marginRight: 6 }]}
+                key={idx}
+                style={styles.storySlot}
+                onPress={() => openEditor(idx)}
                 activeOpacity={0.8}
               >
-                <MaterialCommunityIcons
-                  name="plus"
-                  size={20}
-                  color="#FFF"
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={styles.addButtonText}>Add</Text>
+                <Text style={styles.storyText}>
+                  {story || `${idx + 1}. Tap to enter story`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <View style={styles.storyButtonsRow}>
+              {stories.length < MAX_STORIES && (
+                <TouchableOpacity onPress={addStory} style={styles.addButton}>
+                  <MaterialCommunityIcons
+                    name="plus"
+                    size={20}
+                    color="#FFF"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.addButtonText}>Add</Text>
+                </TouchableOpacity>
+              )}
+              {stories.length > MIN_STORIES && (
+                <TouchableOpacity
+                  onPress={removeStory}
+                  style={styles.addButton}
+                >
+                  <MaterialCommunityIcons
+                    name="minus"
+                    size={20}
+                    color="#FFF"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.addButtonText}>Remove</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <TouchableOpacity
+              onPress={submitStories}
+              disabled={stories.filter((s) => s.trim()).length < MIN_STORIES}
+              style={[
+                styles.submitButton,
+                stories.filter((s) => s.trim()).length < MIN_STORIES && {
+                  opacity: 0.5,
+                },
+              ]}
+            >
+              <Text style={styles.submitText}>SUBMIT STORIES</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <View style={{ alignItems: "center" }}>
+            <Text style={{ color: "#fff", marginBottom: 12 }}>
+              {amHost
+                ? allReady
+                  ? "All set! Start the game."
+                  : "Waiting for players…"
+                : "Waiting for host…"}
+            </Text>
+            {amHost && allReady && (
+              <TouchableOpacity onPress={startGame} style={styles.submitButton}>
+                <Text style={styles.submitText}>START GAME</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              onPress={removeStory}
-              style={[styles.addButton, { flex: 1, marginLeft: 6 }]}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons
-                name="minus"
-                size={20}
-                color="#FFF"
-                style={{ marginRight: 6 }}
-              />
-              <Text style={styles.addButtonText}>Remove</Text>
-            </TouchableOpacity>
           </View>
         )}
-
-        {stories.length < 4 && stories.length < MAX_STORIES && (
-          <TouchableOpacity
-            onPress={addStory}
-            style={styles.addButton}
-            activeOpacity={0.8}
-          >
-            <MaterialCommunityIcons
-              name="plus"
-              size={20}
-              color="#FFF"
-              style={{ marginRight: 6 }}
-            />
-            <Text style={styles.addButtonText}>Add another story</Text>
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          onPress={() =>
-            router.push(`/${gameCode}/wait?user=${encodeURIComponent(user)}`)
-          }
-          style={[
-            styles.submitButton,
-            stories.filter((s) => s.trim()).length < MIN_STORIES && {
-              opacity: 0.5,
-            },
-          ]}
-          disabled={stories.filter((s) => s.trim()).length < MIN_STORIES}
-        >
-          <Text style={styles.submitText}>SUBMIT STORIES</Text>
-        </TouchableOpacity>
       </View>
 
-      <Modal
-        visible={editingIndex !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setEditingIndex(null)}
-      >
+      {/* Story editor modal */}
+      <Modal visible={editingIndex !== null} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              Story {editingIndex !== null ? editingIndex + 1 : ""}
-            </Text>
+            <Text style={styles.modalTitle}>Story {editingIndex + 1}</Text>
             <TextInput
               value={draftText}
               onChangeText={setDraftText}
-              placeholder="Type your story here…"
+              placeholder="Type your story…"
               multiline
               style={styles.modalInput}
               textAlignVertical="top"
@@ -236,9 +225,20 @@ export default function GameLobby() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
   header: { alignItems: "center", marginBottom: 32 },
+  pinLabel: {
+    fontSize: 16,
+    color: "#888",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
   codeText: { fontSize: 52, fontWeight: "bold", color: "#ccc" },
   waitingText: { fontSize: 16, color: "#aaa", marginTop: 4 },
-  playerRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  playerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
   playerName: { fontSize: 18, color: "#fff" },
   sectionTitle: { color: "#fff", fontSize: 18, marginBottom: 12 },
   storySlot: {
@@ -250,6 +250,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   storyText: { color: "#fff", fontSize: 16 },
+  storyButtonsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
   addButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -257,23 +262,26 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     height: 48,
     justifyContent: "center",
-    marginBottom: 16,
     paddingHorizontal: 12,
+    flex: 1,
+    marginHorizontal: 4,
   },
   addButtonText: { color: "#fff", fontSize: 16 },
-  storyButtonsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
   submitButton: {
     backgroundColor: "#2563EB",
     borderRadius: 24,
     height: 48,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 20,
   },
   submitText: { color: "#fff", fontSize: 18, fontWeight: "600" },
+  closeButton: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    zIndex: 10,
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.6)",
@@ -310,17 +318,4 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   modalSaveText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  pinLabel: {
-    fontSize: 16,
-    color: "#888",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  closeButton: {
-    position: "absolute",
-    top: 16,
-    right: 16,
-    zIndex: 10,
-  },
 });
