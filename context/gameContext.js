@@ -31,6 +31,9 @@ function reducer(state, action) {
         votes: {}, // reset votes for new round
       };
 
+    case "START_VOTE":
+      return { ...state, phase: "VOTE" };
+
     case "VOTE_RESULT":
       return {
         ...state,

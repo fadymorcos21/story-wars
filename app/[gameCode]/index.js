@@ -1,5 +1,5 @@
 // app/[gameCode]/index.js
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   SafeAreaView,
   View,
@@ -32,7 +32,22 @@ export default function GameLobby() {
   const allReady = players.length >= 3 && players.every((p) => p.ready);
 
   // story input state
-  const [stories, setStories] = useState(Array(MIN_STORIES).fill("a"));
+  // const [stories, setStories] = useState(
+  //   Array(MIN_STORIES).fill(`${me.username}`) //For testing
+  // );
+
+  // uncomment later^
+
+  // temporary
+  const [stories, setStories] = useState([]);
+
+  useEffect(() => {
+    if (me?.username && stories.length === 0) {
+      setStories(Array(MIN_STORIES).fill(`${me.username} `.repeat(4)));
+    }
+  }, [me, stories.length]);
+  // temporary
+
   const [editingIndex, setEditingIndex] = useState(null);
   const [draftText, setDraftText] = useState("");
 
