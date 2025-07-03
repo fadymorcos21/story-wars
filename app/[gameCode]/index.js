@@ -14,7 +14,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useGame } from "../../context/gameContext";
+import { useGame } from "../../context/GameContext";
 
 const MAX_STORIES = 5;
 const MIN_STORIES = 3;
