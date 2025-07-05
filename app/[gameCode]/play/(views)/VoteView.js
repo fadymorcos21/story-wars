@@ -102,12 +102,14 @@ export default function VoteView() {
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity
-        onPress={() => dispatch({ type: "SHOW_STORY" })}
-        style={styles.showStory}
-      >
-        <Text style={styles.showStoryText}>SHOW STORY</Text>
-      </TouchableOpacity>
+      <View style={styles.showStoryBtnView}>
+        <TouchableOpacity
+          onPress={() => dispatch({ type: "SHOW_STORY" })}
+          style={styles.showStory}
+        >
+          <Text style={styles.showStoryText}>SHOW STORY</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -119,12 +121,45 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: "#1a0041",
+    // justifyContent: "space-around",
+    alignItems: "center",
     padding: 20,
   },
   header: {
+    flex: 4,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    // marginVertical: 20,
+  },
+  waiting: {
+    flex: 1,
+    color: "#AAA",
+    fontSize: 16,
+    textAlign: "center",
+    // marginVertical: 12,
+  },
+  card: {
+    flex: 4,
+    backgroundColor: "#15264F",
+    borderRadius: 20,
+    padding: CARD_PADDING,
+    width: width - 40,
+  },
+  showStoryBtnView: {
+    flex: 4,
+    // backgroundColor: "red",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  showStory: {
+    // flex: 4,
+    marginTop: 24,
+    alignSelf: "center",
+    backgroundColor: "#3B82F6",
+    borderRadius: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
   },
   title: {
     color: "#FFC700",
@@ -143,19 +178,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
-  waiting: {
-    color: "#AAA",
-    fontSize: 16,
-    textAlign: "center",
-    marginVertical: 12,
-  },
 
-  card: {
-    backgroundColor: "#15264F",
-    borderRadius: 20,
-    padding: CARD_PADDING,
-    width: width - 40,
-  },
   cardTitle: {
     color: "#FFF",
     fontSize: 20,
@@ -228,14 +251,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  showStory: {
-    marginTop: 24,
-    alignSelf: "center",
-    backgroundColor: "#3B82F6",
-    borderRadius: 24,
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-  },
   showStoryText: {
     color: "#FFF",
     fontSize: 16,
